@@ -2,23 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
-class Entry
+public class Journal
 {
-    public string _date;
-    public string _promptText;
-    public string _entryText;
+    public List<Entry> _entries;
 
-    public void Display()
+    public Journal()
     {
-        Console.WriteLine($"{_date} - {_promptText}");
-        Console.WriteLine(_entryText);
-        Console.WriteLine();
+        _entries = new List<Entry>();
     }
-}
-
-class Journal
-{
-    public List<Entry> _entries = new List<Entry>();
 
     public void AddEntry(Entry newEntry)
     {
@@ -27,113 +18,108 @@ class Journal
 
     public void DisplayAll()
     {
-        foreach (Entry e in _entries)
+        if (_entries.Count == 0)
         {
-            e.Display();
+            Console.WriteLine("\nThe journal is currently empty.\n");
+            return;
+        }
+
+        Console.WriteLine("\n--- Journal Entries ---");
+        foreach (Entry entry in _entries)
+        {
+            entry.Display();
         }
     }
 
-    public void SaveToFile(string filename)
+    public void SaveToFile(string file)
     {
-        using (StreamWriter outputFile = new StreamWriter(filename))
+        using (StreamWriter outputFile = new StreamWriter(file))
         {
-            foreach (Entry e in _entries)
+            // Write CSV header for Excel compatibility
+            outputFile.WriteLine("Date,Mood,Prompt,Response");
+
+            foreach (Entry entry in _entries)
             {
-                outputFile.WriteLine($"{e._date}|{e._promptText}|{e._entryText}");
+                outputFile.WriteLine(entry.ToCsvLine());
             }
         }
+        Console.WriteLine("Journal saved successfully.");
     }
 
-    public void LoadFromFile(string filename)
+    public void LoadFromFile(string file)
     {
-        string[] lines = File.ReadAllLines(filename);
-        _entries.Clear();
-        foreach (string line in lines)
+        if (!File.Exists(file))
         {
-            string[] parts = line.Split('|');
-            Entry e = new Entry
-            {
-                _date = parts[0],
-                _promptText = parts[1],
-                _entryText = parts[2]
-            };
-            _entries.Add(e);
+            Console.WriteLine("File not found.");
+            return;
         }
-    }
-}
 
-class PromptGenerator
-{
-    public List<string> _prompts = new List<string>
-    {
-        "Who was the most interesting person I interacted with today?",
-        "What was the best part of my day?",
-        "How did I see the hand of the Lord in my life today?",
-        "What was the strongest emotion I felt today?",
-        "If I had one thing I could do over today, what would it be?"
-    };
+        string[] lines = File.ReadAllLines(file);
+        _entries.Clear(); // Replace current entries as required
 
-    public string GetRandomPrompt()
-    {
-        Random rnd = new Random();
-        int index = rnd.Next(_prompts.Count);
-        return _prompts[index];
-    }
-}
-
-class Program
-{
-    static void Main()
-    {
-        Journal journal = new Journal();
-        PromptGenerator generator = new PromptGenerator();
-        bool running = true;
-
-        while (running)
+        // Start at index 1 to skip the CSV header row
+        for (int i = 1; i < lines.Length; i++)
         {
-            Console.WriteLine("1. Write new entry");
-            Console.WriteLine("2. Display journal");
-            Console.WriteLine("3. Save journal");
-            Console.WriteLine("4. Load journal");
-            Console.WriteLine("5. Quit");
-            Console.Write("Choose an option: ");
-            string choice = Console.ReadLine();
+            if (string.IsNullOrWhiteSpace(lines[i])) continue;
 
-            switch (choice)
+            List<string> parts = ParseCsvLine(lines[i]);
+            if (parts.Count >= 4)
             {
-                case "1":
-                    string prompt = generator.GetRandomPrompt();
-                    Console.WriteLine(prompt);
-                    string response = Console.ReadLine();
-                    Entry entry = new Entry
+                Entry loadedEntry = new Entry(parts[0], parts[2], parts[3], parts[1]);
+                _entries.Add(loadedEntry);
+            }
+        }
+        Console.WriteLine("Journal loaded successfully.");
+    }
+
+    // Properly parses CSV fields containing commas and escaped quotes
+    private List<string> ParseCsvLine(string line)
+    {
+        List<string> fields = new List<string>();
+        bool inQuotes = false;
+        string currentField = "";
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    if (i + 1 < line.Length && line[i + 1] == '"')
                     {
-                        _date = DateTime.Now.ToShortDateString(),
-                        _promptText = prompt,
-                        _entryText = response
-                    };
-                    journal.AddEntry(entry);
-                    break;
-
-                case "2":
-                    journal.DisplayAll();
-                    break;
-
-                case "3":
-                    Console.Write("Enter filename to save: ");
-                    string saveFile = Console.ReadLine();
-                    journal.SaveToFile(saveFile);
-                    break;
-
-                case "4":
-                    Console.Write("Enter filename to load: ");
-                    string loadFile = Console.ReadLine();
-                    journal.LoadFromFile(loadFile);
-                    break;
-
-                case "5":
-                    running = false;
-                    break;
+                        currentField += '"';
+                        i++; // Skip escaped quote
+                    }
+                    else
+                    {
+                        inQuotes = false;
+                    }
+                }
+                else
+                {
+                    currentField += c;
+                }
+            }
+            else
+            {
+                if (c == '"')
+                {
+                    inQuotes = true;
+                }
+                else if (c == ',')
+                {
+                    fields.Add(currentField);
+                    currentField = "";
+                }
+                else
+                {
+                    currentField += c;
+                }
             }
         }
+        fields.Add(currentField);
+        return fields;
     }
 }
